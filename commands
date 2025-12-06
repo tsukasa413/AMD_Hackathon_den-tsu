@@ -1,20 +1,45 @@
+lerobot-find-port
+
 sudo chmod 666 /dev/ttyACM0
 sudo chmod 666 /dev/ttyACM1
+sudo chmod 666 /dev/ttyACM2
+sudo chmod 666 /dev/ttyACM3
+
+lerobot-calibrate \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyACM2 \
+    --teleop.id=tsu_leader_arm
+
+lerobot-calibrate \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyACM3\
+    --robot.id=tsu_follower_arm
+
+
+lerobot-teleoperate \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyACM3 \
+    --robot.id=tsu_follower_arm \
+    --robot.cameras="{ front: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 30}}" \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyACM2 \
+    --teleop.id=tsu_leader_arm \
+    --display_data=true
 
 lerobot-record \
     --robot.type=so101_follower \
     --robot.port=/dev/ttyACM0 \
-    --robot.id=den_follower_arm \
-    --robot.cameras="{ front: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 30}}" \
+    --robot.id=tsu_follower_arm \
+    --robot.cameras="{ top: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 30},front: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 30}}" \
     --teleop.type=so101_leader \
     --teleop.port=/dev/ttyACM1 \
-    --teleop.id=den_leader_arm \
+    --teleop.id=tsu_leader_arm \
     --display_data=true \
-    --dataset.repo_id=Mozgi512/record_mission_1 \
-    --dataset.num_episodes=5 \
-    --dataset.single_task="Grab the biscuit" \
-    --dataset.episode_time_s=20 \
-    --dataset.reset_time_s=10
+    --dataset.repo_id=Mozgi512/record_smoking2_1 \
+    --dataset.num_episodes=30 \
+    --dataset.single_task="smoking" \
+    --dataset.episode_time_s=60 \
+    --dataset.reset_time_s=5
 
 
 lerobot-replay \
@@ -36,15 +61,140 @@ lerobot-train \
 lerobot-record  \
   --robot.type=so101_follower \
   --robot.port=/dev/ttyACM0 \
-  --robot.cameras="{ front: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 30}}" \
-  --robot.id=den_follower_arm \
+  --robot.id=tsu_follower_arm \
+  --robot.cameras="{ top: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 30},front: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 30}}" \
   --display_data=false \
-  --dataset.repo_id=Mozgi512/eval_record_mission_1 \
-  --dataset.single_task="Grab the biscuit" \
-  --policy.path=Mozgi512/act_mission1_ckpt1
+  --dataset.repo_id=Mozgi512/eval_smoking_2 \
+  --dataset.single_task="Smoking" \
+  --policy.path=Mozgi512/act_smoking_ckpt_1
 
 
     # <- Teleop optional if you want to teleoperate in between episodes \
   # --teleop.type=so100_leader \
   # --teleop.port=/dev/ttyACM0 \
   # --teleop.id=my_awesome_leader_arm \
+
+
+  bimanual:
+
+
+  lerobot-teleoperate \
+    --robot.type=bi_so101_follower \
+    --robot.left_arm_port=/dev/ttyACM0 \  
+
+    --robot.id=den_follower_arm \
+    --robot.cameras="{ front: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 30}}" \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyACM1 \
+    --teleop.id=den_leader_arm \
+    --display_data=true
+
+lerobot-teleoperate \
+  --robot.type=bi_so100_follower \
+  --robot.left_arm_port=/dev/ttyACM2 \
+  --robot.right_arm_port=/dev/ttyACM0 \
+  --robot.id=bimanual_follower \
+  --teleop.type=bi_so100_leader \
+  --teleop.left_arm_port=/dev/ttyACM3 \
+  --teleop.right_arm_port=/dev/ttyACM1 \
+  --teleop.id=bimanual_leader \
+  --robot.cameras="{ top: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 30},front: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 30}}" \
+  --display_data=true
+
+
+
+lerobot-record \
+  --robot.type=bi_so100_follower \
+  --robot.left_arm_port=/dev/ttyACM2 \
+  --robot.right_arm_port=/dev/ttyACM0 \
+  --robot.id=bimanual_follower \
+  --robot.cameras="{ top: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 30},front: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 30}}" \
+  --teleop.type=bi_so100_leader \
+  --teleop.left_arm_port=/dev/ttyACM3 \
+  --teleop.right_arm_port=/dev/ttyACM1 \
+  --teleop.id=bimanual_leader \
+  --dataset.repo_id=Mozgi512/burger_3 \
+  --dataset.num_episodes=20 \
+  --dataset.single_task="Burger" \
+  --dataset.episode_time_s=60 \
+  --dataset.reset_time_s=5 \
+
+(eval:)
+#working
+rm -rf /home/amddemo/.cache/huggingface/lerobot/Mozgi512/eval_hoge1
+lerobot-record  \
+  --robot.type=bi_so100_follower \
+  --robot.left_arm_port=/dev/ttyACM2 \
+  --robot.right_arm_port=/dev/ttyACM0 \
+  --robot.id=bimanual_follower \
+  --policy.path=Mozgi512/act_burger_merged2_6000 \
+  --robot.cameras="{ top: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 30},front: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 30}}" \
+  --display_data=false \
+  --dataset.push_to_hub=false \
+  --dataset.single_task="Burger" \
+  --dataset.episode_time_s=15 \
+  --dataset.num_episodes=1 \
+  --dataset.repo_id=Mozgi512/eval_hoge1
+
+lerobot-record \
+  --robot.type=bi_so100_follower \
+  --robot.left_arm_port=/dev/ttyACM2 \
+  --robot.right_arm_port=/dev/ttyACM0 \
+  --robot.id=bimanual_follower \
+  --policy.path=Mozgi512/act_burger_merged2_6000 \
+  --robot.cameras="{ top: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 30},front: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 30}}" \
+  --display_data=false \
+  --dataset.repo_id=dummy/dataset \
+  --dataset.num_episodes=1 \
+  --dataset.push_to_hub=false
+
+  lerobot-calibrate \
+  --robot.type=bi_so100_follower \
+  --robot.left_arm_port=/dev/ttyACM0 \
+  --robot.right_arm_port=/dev/ttyACM3 \
+  --robot.id=bimanual_follower
+
+  #watching:
+  lerobot-record \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyACM0 \
+    --robot.id=den_follower_arm \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyACM1 \
+    --teleop.id=den_leader_arm \
+    --display_data=true \
+    --dataset.repo_id=Mozgi512/record_watching_2 \
+    --dataset.num_episodes=5 \
+    --dataset.single_task="Watching" \
+    --dataset.episode_time_s=10 \
+    --dataset.reset_time_s=5
+
+lerobot-replay \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyACM0 \
+    --robot.id=den_follower_arm \
+    --dataset.repo_id=Mozgi512/record_watching_2 \
+    --dataset.episode=4
+python3 return_homepos.py 
+
+#apologize:
+  lerobot-record \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyACM0 \
+    --robot.id=den_follower_arm \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyACM1 \
+    --teleop.id=den_leader_arm \
+    --display_data=true \
+    --dataset.repo_id=Mozgi512/record_apologizing_1 \
+    --dataset.num_episodes=5 \
+    --dataset.single_task="Apologizing" \
+    --dataset.episode_time_s=5 \
+    --dataset.reset_time_s=5
+
+    lerobot-replay \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyACM0 \
+    --robot.id=den_follower_arm \
+    --dataset.repo_id=Mozgi512/record_apologizing_1 \
+    --dataset.episode=4
