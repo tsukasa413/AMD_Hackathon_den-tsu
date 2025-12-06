@@ -1,0 +1,50 @@
+sudo chmod 666 /dev/ttyACM0
+sudo chmod 666 /dev/ttyACM1
+
+lerobot-record \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyACM0 \
+    --robot.id=den_follower_arm \
+    --robot.cameras="{ front: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 30}}" \
+    --teleop.type=so101_leader \
+    --teleop.port=/dev/ttyACM1 \
+    --teleop.id=den_leader_arm \
+    --display_data=true \
+    --dataset.repo_id=Mozgi512/record_mission_1 \
+    --dataset.num_episodes=5 \
+    --dataset.single_task="Grab the biscuit" \
+    --dataset.episode_time_s=20 \
+    --dataset.reset_time_s=10
+
+
+lerobot-replay \
+    --robot.type=so101_follower \
+    --robot.port=/dev/ttyACM0 \
+    --robot.id=den_follower_arm \
+    --dataset.repo_id=Mozgi512/record_mission_1 \
+    --dataset.episode=0
+
+lerobot-train \
+  --dataset.repo_id=Mozgi512/record_mission_1 \
+  --policy.type=act \
+  --output_dir=outputs/train/act_mission_1 \
+  --job_name=mission_1 \
+  --policy.device=cuda \
+  --wandb.enable=true \
+  --policy.repo_id=Mozgi512/mission_1_policy
+
+lerobot-record  \
+  --robot.type=so101_follower \
+  --robot.port=/dev/ttyACM0 \
+  --robot.cameras="{ front: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 30}}" \
+  --robot.id=den_follower_arm \
+  --display_data=false \
+  --dataset.repo_id=Mozgi512/eval_record_mission_1 \
+  --dataset.single_task="Grab the biscuit" \
+  --policy.path=Mozgi512/act_mission1_ckpt1
+
+
+    # <- Teleop optional if you want to teleoperate in between episodes \
+  # --teleop.type=so100_leader \
+  # --teleop.port=/dev/ttyACM0 \
+  # --teleop.id=my_awesome_leader_arm \
