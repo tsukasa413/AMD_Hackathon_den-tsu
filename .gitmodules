@@ -1,0 +1,3 @@
+[submodule "mission1"]
+	path = mission1
+	url = https://github.com/tsukasa413/AMD_Hackathon_den-tsu.git
