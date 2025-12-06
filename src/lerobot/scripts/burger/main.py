@@ -12,8 +12,8 @@ import threading
 # インポート\
 from return_home import return_watching_home, return_working_home
 from detection import detect_person
-from replay_action import execute_watching, execute_apologize
-from estimation import execute_smoking, execute_working
+from replay_action import execute_watching, execute_apologize, set_action_cancel as set_replay_cancel
+from estimation import execute_smoking, execute_working, set_action_cancel as set_estimation_cancel
 
 class RightHandState(Enum):
     """右手の状態"""
@@ -46,11 +46,17 @@ class BurgerRobotController:
     def __init__(self):
         self.state = RobotState()
         self.right_hand_idle_start_time = None
-        self.idle_threshold_sec = 3  # 3秒でsmoking状態に遷移
+        self.idle_threshold_sec = 7  # 3秒でsmoking状態に遷移
         self.person_detected = False
         self.detection_thread = None
         self.detection_running = False
         self.person_detected_in_scenario_1 = False  # シナリオ1内で一度でも人を検知したかを記録
+        
+        # 右手・左手スレッド用フラグ
+        self.right_hand_thread = None
+        self.left_hand_thread = None
+        self.right_hand_running = False
+        self.left_hand_running = False
         
     def update_detection(self) -> bool:
         """
@@ -65,27 +71,74 @@ class BurgerRobotController:
         """バックグラウンドで人検知を常に更新"""
         while self.detection_running:
             result = detect_person()
-            # 人が検知された場合、シナリオ1内での人検知フラグをセット
+            # 人が検知された場合、シナリオ1内での人検知フラグをセットしてプロセスを中断
             if result:
-                print(f"[Background Detection] Person detected! Setting flag.")
+                print(f"[Background Detection] Person detected! Setting flag and cancelling actions.")
                 self.person_detected = True
                 self.person_detected_in_scenario_1 = True
+                # 実行中のプロセスをキャンセル
+                set_replay_cancel()
+                set_estimation_cancel()
             else:
                 self.person_detected = False
             time.sleep(0.1)  # 適度な間隔で更新
+    
+    def _background_right_hand_loop(self):
+        """右手のバックグラウンドループ"""
+        smoking_transitioned = False  # SMOKING状態への遷移が完了したかを記録
+        
+        while self.right_hand_running:
+            # 経過時間を計算
+            elapsed = time.time() - self.right_hand_idle_start_time if self.right_hand_idle_start_time else 0
+            
+            # 3秒未満: IDLE状態を継続
+            if elapsed < self.idle_threshold_sec:
+                self.state.right_hand = RightHandState.IDLE
+                smoking_transitioned = False
+            else:
+                # 3秒以上: SMOKING状態に遷移（一度だけ）
+                if not smoking_transitioned:
+                    print(f"[Right Hand] Transitioned to SMOKING after {elapsed:.2f}s")
+                    smoking_transitioned = True
+                self.state.right_hand = RightHandState.SMOKING
+                
+                # SMOKING状態に遷移した後、smoking動作を実行
+                if smoking_transitioned:
+                    execute_smoking()
+                    # smoking動作が完了後、ループを抜ける
+                    if self.person_detected_in_scenario_1:
+                        print("[Right Hand] Detection cancelled smoking action")
+                        break
+            
+            time.sleep(0.05)  # 定期的に状態を更新
+    
+    def _background_left_hand_loop(self):
+        """左手のバックグラウンドループ"""
+        while self.left_hand_running:
+            # 左手は常にWATCHING状態で見渡す
+            self.state.left_hand = LeftHandState.WATCHING
+            
+            # watching動作を実行（キャンセルフラグをチェック）
+            execute_watching()
+            
+            # キャンセルフラグがセットされたら終了
+            if self.person_detected_in_scenario_1:
+                print("[Left Hand] Detection cancelled watching loop")
+                break
+            
+            time.sleep(0.05)
     
     def execute_scenario_1_sabori(self) -> Tuple[bool, str]:
         """
         シナリオ1：さぼる
         
         ループフロー:
-        1. ループ開始時: execute_watching_home で watching ホームポジションに移動、右手=IDLE、左手=WATCHING
-        2. 通常ループ中: execute_watching で周りを見渡す
-        3. 3秒経過後: 右手が SMOKING 状態に遷移
-        4. 人検知チェック:
-           - 右手が SMOKING 中に人検知 → execute_watching_home してシナリオ2（謝る）へ遷移
-           - 右手が IDLE 中に人検知 → execute_watching_home してシナリオ3（働く）へ遷移
-        5. ループ継続: 状態を維持し、タイマーはリセットせず継続計測、execute_watching で見守る
+        1. ループ開始時: watching_home に移動、右手=IDLE、左手=WATCHING、スレッド開始
+        2. バックグラウンド：
+           - 右手スレッド: 3秒後にIDLE→SMOKING状態に遷移
+           - 左手スレッド: 常にWATCHING状態でexecute_watching()を実行
+           - 検知スレッド: 常に人検知をチェック
+        3. 人検知時：全スレッドをキャンセルして状態遷移
         
         Returns:
             Tuple[bool, str]: (状態遷移があったか, 次の状態)
@@ -102,27 +155,36 @@ class BurgerRobotController:
             self.right_hand_idle_start_time = time.time()
             # シナリオ1内の人検知フラグをリセット
             self.person_detected_in_scenario_1 = False
-            # バックグラウンド検知スレッドを開始
+            
+            # バックグラウンドスレッドを開始
             if not self.detection_running:
                 self.detection_running = True
                 self.detection_thread = threading.Thread(target=self._background_detection_loop, daemon=True)
                 self.detection_thread.start()
-                print("✓ Background detection thread started")
-            print("✓ Moved to watching_home, starting idle timer")
+            
+            if not self.right_hand_running:
+                self.right_hand_running = True
+                self.right_hand_thread = threading.Thread(target=self._background_right_hand_loop, daemon=True)
+                self.right_hand_thread.start()
+            
+            if not self.left_hand_running:
+                self.left_hand_running = True
+                self.left_hand_thread = threading.Thread(target=self._background_left_hand_loop, daemon=True)
+                self.left_hand_thread.start()
+            
+            print("✓ All background threads started")
             time.sleep(0.1)
             return False, "scenario_1_sabori"
         
-        print(f"\n[Scenario 1: Sabori] {self.state}")
-        
-        # 経過時間を計算
-        elapsed = time.time() - self.right_hand_idle_start_time
-        
-        # 人検知結果を出力
-        detection_status = "✓ Person detected" if self.person_detected_in_scenario_1 else "✗ No person detected"
-        print(f"[Detection Status] {detection_status} (self.person_detected_in_scenario_1={self.person_detected_in_scenario_1})")
+        # 人検知時のみ出力
         
         if self.person_detected_in_scenario_1:
-            print("⚠ Person was detected in this scenario 1 session!")
+            print("\n⚠ Person was detected in this scenario 1 session!")
+            # 全スレッドを停止
+            self.right_hand_running = False
+            self.left_hand_running = False
+            self.detection_running = False
+            
             # watching_home位置に戻る
             return_watching_home()
             
@@ -130,42 +192,14 @@ class BurgerRobotController:
             if self.state.right_hand == RightHandState.SMOKING:
                 print("⚠ Right hand was SMOKING. Transitioning to Scenario 2 (Ayamaru)")
                 self.right_hand_idle_start_time = None
-                self.detection_running = False
                 return True, "scenario_2_ayamaru"
             else:  # IDLE状態
                 print("✓ Right hand was IDLE. Transitioning to Scenario 3 (Working)")
                 self.right_hand_idle_start_time = None
-                self.detection_running = False
                 return True, "scenario_3_work"
         
-        # 3秒未満: IDLE状態を継続、周りを見渡す
-        if elapsed < self.idle_threshold_sec:
-            print(f"Waiting for idle threshold... ({elapsed:.1f}s / {self.idle_threshold_sec}s)")
-            execute_watching()
-            time.sleep(0.1)
-            return False, "scenario_1_sabori"
-        
-        # 3秒以上: SMOKING状態に遷移
-        if self.state.right_hand == RightHandState.IDLE:
-            self.state.right_hand = RightHandState.SMOKING
-            print(f"✓ Right hand transitioned to SMOKING (after {elapsed:.1f}s)")
-            
-            # smoking動作とwatching動作を同時進行
-            smoking_thread = threading.Thread(target=execute_smoking)
-            watching_thread = threading.Thread(target=execute_watching)
-            
-            smoking_thread.start()
-            watching_thread.start()
-            
-            smoking_thread.join()
-            watching_thread.join()
-            
-            print("✓ Smoking and Watching actions completed")
-        
-        # SMOKING状態でループ継続、周りを見渡す
-        print(f"Right hand is SMOKING, continuing sabori... ({elapsed:.1f}s elapsed)")
-        execute_watching()
-        time.sleep(0.1)
+        # スレッド実行中、静かにループを継続
+        time.sleep(0.5)
         return False, "scenario_1_sabori"
     
     def execute_scenario_2_ayamaru(self) -> Tuple[bool, str]:
@@ -178,6 +212,9 @@ class BurgerRobotController:
             Tuple[bool, str]: (状態遷移があったか, 次の状態)
         """
         print(f"\n[Scenario 2: Ayamaru] {self.state}")
+        
+        # 検知スレッドを停止（シナリオ2と3では人検知不要）
+        self.detection_running = False
         
         # 状態を更新
         self.state.right_hand = RightHandState.IDLE

@@ -1,13 +1,42 @@
 import time
+import threading
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.robots.so101_follower import SO101FollowerConfig, SO101Follower  
 from lerobot.utils.robot_utils import busy_wait
 from lerobot.utils.utils import log_say
 
+# グローバルキャンセルフラグと保護用ロック
+_action_cancel_flag = False
+_cancel_lock = threading.Lock()
+
+
+def set_action_cancel():
+    """動作をキャンセルするフラグをセット"""
+    global _action_cancel_flag
+    with _cancel_lock:
+        _action_cancel_flag = True
+        print("[Action] Cancel flag set")
+
+
+def reset_action_cancel():
+    """キャンセルフラグをリセット"""
+    global _action_cancel_flag
+    with _cancel_lock:
+        _action_cancel_flag = False
+
+
+def is_action_cancelled():
+    """キャンセルフラグがセットされているかチェック"""
+    global _action_cancel_flag
+    with _cancel_lock:
+        return _action_cancel_flag
+
 
 def execute_watching():
     """watching動作を実行"""
+    reset_action_cancel()
+    
     left_follower_config = SO101FollowerConfig(  
         port="/dev/ttyACM2",  
         id="den_follower_arm"  
@@ -21,6 +50,11 @@ def execute_watching():
 
     log_say("replay watching")
     for idx in range(dataset.num_frames):
+        # キャンセルフラグをチェック
+        if is_action_cancelled():
+            print("[Action] Watching cancelled by detection")
+            break
+        
         t0 = time.perf_counter()
 
         action = {
@@ -38,6 +72,8 @@ def execute_watching():
 
 def execute_apologize():
     """apologize動作を実行"""
+    reset_action_cancel()
+    
     left_follower_config = SO101FollowerConfig(  
         port="/dev/ttyACM2",  
         id="den_follower_arm"  
@@ -51,6 +87,11 @@ def execute_apologize():
 
     log_say("replay apologizing")
     for idx in range(dataset.num_frames):
+        # キャンセルフラグをチェック
+        if is_action_cancelled():
+            print("[Action] Apologizing cancelled by detection")
+            break
+        
         t0 = time.perf_counter()
 
         action = {

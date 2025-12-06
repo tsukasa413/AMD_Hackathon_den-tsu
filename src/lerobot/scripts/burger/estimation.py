@@ -12,9 +12,39 @@ from typing import Sequence
 import subprocess
 import time
 import logging
+import threading
+import os
+import shutil
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# グローバルキャンセルフラグと保護用ロック
+_action_cancel_flag = False
+_cancel_lock = threading.Lock()
+
+
+def set_action_cancel():
+    """動作をキャンセルするフラグをセット"""
+    global _action_cancel_flag
+    with _cancel_lock:
+        _action_cancel_flag = True
+        logger.info("Action cancel flag set")
+
+
+def reset_action_cancel():
+    """キャンセルフラグをリセット"""
+    global _action_cancel_flag
+    with _cancel_lock:
+        _action_cancel_flag = False
+
+
+def is_action_cancelled():
+    """キャンセルフラグがセットされているかチェック"""
+    global _action_cancel_flag
+    with _cancel_lock:
+        return _action_cancel_flag
 
 
 def _run_command_for_seconds(cmd: Sequence[str], seconds: int) -> int:
@@ -24,13 +54,32 @@ def _run_command_for_seconds(cmd: Sequence[str], seconds: int) -> int:
     that sleep the subprocess is terminated (SIGTERM) and, if it doesn't exit
     within a short timeout, it is killed (SIGKILL).
 
+    キャンセルフラグがセットされた場合は即座に終了する。
+
     Returns the process return code (may be None until process terminates).
     """
     logger.info("Running command for %d seconds: %s", seconds, " ".join(cmd))
-    # Redirect output to avoid filling pipes in long-running processes.
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    # Capture output for error diagnostics
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    
+    start_time = time.time()
     try:
-        time.sleep(seconds)
+        while time.time() - start_time < seconds:
+            # キャンセルフラグをチェック
+            if is_action_cancelled():
+                logger.info("Action cancelled by detection; terminating process")
+                break
+            # プロセスが早期終了していないかチェック
+            if proc.poll() is not None:
+                elapsed = time.time() - start_time
+                logger.warning("Process terminated early after %.2f seconds with code: %s", elapsed, proc.returncode)
+                stdout, stderr = proc.communicate()
+                if stderr:
+                    logger.error("STDERR (last 3000 chars): %s", stderr[-3000:])
+                if stdout:
+                    logger.info("STDOUT (last 3000 chars): %s", stdout[-3000:])
+                return proc.returncode
+            time.sleep(0.1)  # 定期的にチェック
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received; terminating child process")
     finally:
@@ -41,7 +90,12 @@ def _run_command_for_seconds(cmd: Sequence[str], seconds: int) -> int:
             pass
 
         try:
-            proc.wait(timeout=5)
+            stdout, stderr = proc.communicate(timeout=5)
+            if proc.returncode != 0:
+                if stderr:
+                    logger.error("STDERR (last 3000 chars): %s", stderr[-3000:])
+                if stdout:
+                    logger.info("STDOUT (last 3000 chars): %s", stdout[-3000:])
         except subprocess.TimeoutExpired:
             logger.info("Process did not exit after SIGTERM; killing it")
             try:
@@ -60,6 +114,17 @@ def execute_working(duration: int = 20) -> None:
     This runs the `lerobot-record` command with parameters used by the burger
     robot policy and waits `duration` seconds before terminating the process.
     """
+    reset_action_cancel()
+    
+    # キャッシュディレクトリが存在する場合は削除
+    cache_dir = "/home/amddemo/.cache/huggingface/lerobot/Mozgi512/eval_hoge1"
+    if os.path.exists(cache_dir):
+        logger.info("Removing existing cache directory: %s", cache_dir)
+        try:
+            shutil.rmtree(cache_dir)
+        except Exception as e:
+            logger.error("Failed to remove cache directory: %s", e)
+    
     cmd = [
         "lerobot-record",
         "--robot.type=bi_so100_follower",
@@ -88,20 +153,27 @@ def execute_smoking(duration: int = 20) -> None:
     `execute_watching` as a placeholder. Replace the command contents here
     when the actual smoking CLI is available.
     """
+    reset_action_cancel()
+
+    # キャッシュディレクトリが存在する場合は削除
+    cache_dir = "/home/amddemo/.cache/huggingface/lerobot/Mozgi512/eval_smoking_2"
+    if os.path.exists(cache_dir):
+        logger.info("Removing existing cache directory: %s", cache_dir)
+        try:
+            shutil.rmtree(cache_dir)
+        except Exception as e:
+            logger.error("Failed to remove cache directory: %s", e)
+    
     cmd = [
         "lerobot-record",
-        "--robot.type=bi_so100_follower",
-        "--robot.left_arm_port=/dev/ttyACM2",
-        "--robot.right_arm_port=/dev/ttyACM0",
-        "--robot.id=bimanual_follower",
-        "--policy.path=Mozgi512/act_burger_merged2_6000",
+        "--robot.type=so101_follower",
+        "--robot.port=/dev/ttyACM0",
+        "--robot.id=tsu_follower_arm",
         "--robot.cameras={ top: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 30},front: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 30}}",
         "--display_data=false",
-        "--dataset.push_to_hub=false",
-        "--dataset.single_task=Burger",
-        "--dataset.episode_time_s=15",
-        "--dataset.num_episodes=1",
-        "--dataset.repo_id=Mozgi512/eval_hoge1",
+        "--dataset.repo_id=Mozgi512/eval_smoking_2",
+        "--dataset.single_task=Smoking",
+        "--policy.path=Mozgi512/act_smoking_ckpt_1"
     ]
 
     logger.info("Starting smoking action (duration=%ds)", duration)
