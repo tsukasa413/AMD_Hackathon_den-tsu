@@ -11,7 +11,7 @@ from dataclasses import dataclass
 # インポート
 from smoking import execute_smoking
 from apologize import execute_apologize
-from return_home import execute_return_home
+from return_home import execute_watching_home, execute_working_home
 from detection import detect_person
 from watching import execute_watching
 from task import execute_working
@@ -63,50 +63,72 @@ class BurgerRobotController:
     def execute_scenario_1_sabori(self) -> Tuple[bool, str]:
         """
         シナリオ1：さぼる
-        右手：idle → smoking
-        左手：watching（ループ）
+        
+        ループフロー:
+        1. ループ開始時: watching_home に移動、右手=IDLE、左手=WATCHING
+        2. 3秒経過後: 右手が SMOKING 状態に遷移
+        3. 人検知チェック:
+           - 右手が SMOKING 中に人検知 → シナリオ2（謝る）へ遷移
+           - 右手が IDLE 中に人検知 → シナリオ3（働く）へ遷移
+        4. ループ継続: 状態を維持し、タイマーはリセットせず継続計測
         
         Returns:
             Tuple[bool, str]: (状態遷移があったか, 次の状態)
         """
+        # ループの最初（初回エントリー時）
+        if self.state.left_hand != LeftHandState.WATCHING or self.right_hand_idle_start_time is None:
+            print(f"\n[Scenario 1: Sabori - Loop Start] {self.state}")
+            # watching_home位置に移動
+            execute_watching_home()
+            # 状態を初期化
+            self.state.right_hand = RightHandState.IDLE
+            self.state.left_hand = LeftHandState.WATCHING
+            # タイマーを開始
+            self.right_hand_idle_start_time = time.time()
+            print("✓ Moved to watching_home, starting idle timer")
+            time.sleep(0.1)
+            return False, "scenario_1_sabori"
+        
         print(f"\n[Scenario 1: Sabori] {self.state}")
         
-        # 左手がwatchingで人検知をチェック
+        # 経過時間を計算
+        elapsed = time.time() - self.right_hand_idle_start_time
+        
+        # 人検知をチェック
         self.update_detection()
         
         if self.person_detected:
-            print("⚠ Person detected during sabori! Transitioning to Scenario 2 (Ayamaru)")
-            return True, "scenario_2_ayamaru"
-        
-        # 右手がidleからsmokingへの遷移
-        if self.state.right_hand == RightHandState.IDLE:
-            if self.right_hand_idle_start_time is None:
-                self.right_hand_idle_start_time = time.time()
+            print("⚠ Person detected during sabori!")
+            # watching_home位置に戻る
+            execute_watching_home()
             
-            elapsed = time.time() - self.right_hand_idle_start_time
-            
-            if elapsed >= self.idle_threshold_sec:
-                # smoking動作を開始
-                self.state.right_hand = RightHandState.SMOKING
-                print(f"✓ Right hand transitioned to SMOKING (after {elapsed:.1f}s)")
-                
-                # smoking動作を実行
-                execute_smoking()
-                
-                # smoking動作が終わったのでworkingシナリオに遷移
-                print("✓ Smoking action completed. Transitioning to Scenario 3 (Working)")
-                
-                # home位置に戻る
-                execute_return_home()
-                
+            # 右手の状態に応じて遷移先を決定
+            if self.state.right_hand == RightHandState.SMOKING:
+                print("⚠ Right hand was SMOKING. Transitioning to Scenario 2 (Ayamaru)")
+                self.right_hand_idle_start_time = None
+                return True, "scenario_2_ayamaru"
+            else:  # IDLE状態
+                print("✓ Right hand was IDLE. Transitioning to Scenario 3 (Working)")
+                self.right_hand_idle_start_time = None
                 return True, "scenario_3_work"
-            else:
-                # まだ3秒未満、waiting状態を保つ
-                print(f"Waiting for idle threshold... ({elapsed:.1f}s / {self.idle_threshold_sec}s)")
-                time.sleep(0.1)
-                return False, "scenario_1_sabori"
         
-        # ループを続ける
+        # 3秒未満: IDLE状態を継続
+        if elapsed < self.idle_threshold_sec:
+            print(f"Waiting for idle threshold... ({elapsed:.1f}s / {self.idle_threshold_sec}s)")
+            time.sleep(0.1)
+            return False, "scenario_1_sabori"
+        
+        # 3秒以上: SMOKING状態に遷移
+        if self.state.right_hand == RightHandState.IDLE:
+            self.state.right_hand = RightHandState.SMOKING
+            print(f"✓ Right hand transitioned to SMOKING (after {elapsed:.1f}s)")
+            # smoking動作を実行
+            execute_smoking()
+            print("✓ Smoking action completed")
+        
+        # SMOKING状態でループ継続
+        print(f"Right hand is SMOKING, continuing sabori... ({elapsed:.1f}s elapsed)")
+        time.sleep(0.1)
         return False, "scenario_1_sabori"
     
     def execute_scenario_2_ayamaru(self) -> Tuple[bool, str]:
@@ -128,8 +150,8 @@ class BurgerRobotController:
         execute_apologize()
         print("✓ Apologize action completed")
         
-        # home位置に戻る
-        execute_return_home()
+        # watching_home位置に戻る
+        execute_watching_home()
         
         # working シナリオに遷移
         print("✓ Transitioning to Scenario 3 (Working)")
@@ -154,8 +176,8 @@ class BurgerRobotController:
         execute_working()
         print("✓ Working action completed")
         
-        # home位置に戻る
-        execute_return_home()
+        # working_home位置に戻る
+        execute_working_home()
         
         # シナリオ1に戻る
         print("✓ Transitioning back to Scenario 1 (Sabori)")
