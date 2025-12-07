@@ -16,6 +16,7 @@ import threading
 import os
 import shutil
 from datetime import datetime
+from return_home import return_watching_home, return_working_home
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -59,10 +60,18 @@ def _run_command_for_seconds(cmd: Sequence[str], seconds: int) -> int:
     Returns the process return code (may be None until process terminates).
     """
     logger.info("Running command for %d seconds: %s", seconds, " ".join(cmd))
-    # Capture output for error diagnostics
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # Capture output for error diagnostics, provide stdin to auto-respond to prompts
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, text=True)
+    
+    # キャリブレーションプロンプトに自動的にENTERを送信
+    try:
+        proc.stdin.write("\n")
+        proc.stdin.flush()
+    except Exception as e:
+        logger.warning("Failed to send ENTER to stdin: %s", e)
     
     start_time = time.time()
+    early_exit = False
     try:
         while time.time() - start_time < seconds:
             # キャンセルフラグをチェック
@@ -73,25 +82,22 @@ def _run_command_for_seconds(cmd: Sequence[str], seconds: int) -> int:
             if proc.poll() is not None:
                 elapsed = time.time() - start_time
                 logger.warning("Process terminated early after %.2f seconds with code: %s", elapsed, proc.returncode)
-                stdout, stderr = proc.communicate()
-                if stderr:
-                    logger.error("STDERR (last 3000 chars): %s", stderr[-3000:])
-                if stdout:
-                    logger.info("STDOUT (last 3000 chars): %s", stdout[-3000:])
-                return proc.returncode
+                early_exit = True
+                break
             time.sleep(0.1)  # 定期的にチェック
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received; terminating child process")
     finally:
         # Try graceful termination first
-        try:
-            proc.terminate()
-        except Exception:
-            pass
+        if not early_exit:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
 
         try:
             stdout, stderr = proc.communicate(timeout=5)
-            if proc.returncode != 0:
+            if proc.returncode != 0 or early_exit:
                 if stderr:
                     logger.error("STDERR (last 3000 chars): %s", stderr[-3000:])
                 if stdout:
@@ -108,7 +114,7 @@ def _run_command_for_seconds(cmd: Sequence[str], seconds: int) -> int:
     return proc.returncode
 
 
-def execute_working(duration: int = 20) -> None:
+def execute_working(duration: int = 30) -> None:
     """Execute the watching CLI for `duration` seconds.
 
     This runs the `lerobot-record` command with parameters used by the burger
@@ -131,12 +137,12 @@ def execute_working(duration: int = 20) -> None:
         "--robot.left_arm_port=/dev/ttyACM2",
         "--robot.right_arm_port=/dev/ttyACM0",
         "--robot.id=bimanual_follower",
-        "--policy.path=Mozgi512/act_burger_merged2_6000",
+        "--policy.path=Mozgi512/act_burger_final_8000",
         "--robot.cameras={ top: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 30},front: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 30}}",
         "--display_data=false",
         "--dataset.push_to_hub=false",
         "--dataset.single_task=Burger",
-        "--dataset.episode_time_s=15",
+        "--dataset.episode_time_s=30",
         "--dataset.num_episodes=1",
         "--dataset.repo_id=Mozgi512/eval_hoge1",
     ]
@@ -144,7 +150,9 @@ def execute_working(duration: int = 20) -> None:
     logger.info("Starting watching action (duration=%ds)", duration)
     _run_command_for_seconds(cmd, duration)
     logger.info("Watching action completed")
-
+    time.sleep(1.0)
+    return_working_home()
+    time.sleep(1.0)
 
 def execute_smoking(duration: int = 20) -> None:
     """Execute the smoking action.

@@ -18,11 +18,11 @@ lerobot-calibrate \
 
 lerobot-teleoperate \
     --robot.type=so101_follower \
-    --robot.port=/dev/ttyACM3 \
+    --robot.port=/dev/ttyACM0 \
     --robot.id=tsu_follower_arm \
     --robot.cameras="{ front: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 30}}" \
     --teleop.type=so101_leader \
-    --teleop.port=/dev/ttyACM2 \
+    --teleop.port=/dev/ttyACM1 \
     --teleop.id=tsu_leader_arm \
     --display_data=true
 
@@ -35,7 +35,7 @@ lerobot-record \
     --teleop.port=/dev/ttyACM1 \
     --teleop.id=tsu_leader_arm \
     --display_data=true \
-    --dataset.repo_id=Mozgi512/record_smoking2_1 \
+    --dataset.repo_id=Mozgi512/record_smoking3_1 \
     --dataset.num_episodes=30 \
     --dataset.single_task="smoking" \
     --dataset.episode_time_s=60 \
@@ -44,9 +44,9 @@ lerobot-record \
 
 lerobot-replay \
     --robot.type=so101_follower \
-    --robot.port=/dev/ttyACM0 \
+    --robot.port=/dev/ttyACM2 \
     --robot.id=den_follower_arm \
-    --dataset.repo_id=Mozgi512/record_mission_1 \
+    --dataset.repo_id=Mozgi512/burger_1 \
     --dataset.episode=0
 
 lerobot-train \
@@ -64,9 +64,9 @@ lerobot-record  \
   --robot.id=tsu_follower_arm \
   --robot.cameras="{ top: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 30},front: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 30}}" \
   --display_data=false \
-  --dataset.repo_id=Mozgi512/eval_smoking_2 \
+  --dataset.repo_id=Mozgi512/eval_smoking3_1 \
   --dataset.single_task="Smoking" \
-  --policy.path=Mozgi512/act_smoking_ckpt_1
+  --policy.path=Mozgi512/act_smoke_final_5000
 
 
     # <- Teleop optional if you want to teleoperate in between episodes \
@@ -80,8 +80,7 @@ lerobot-record  \
 
   lerobot-teleoperate \
     --robot.type=bi_so101_follower \
-    --robot.left_arm_port=/dev/ttyACM0 \  
-
+    --robot.left_arm_port=/dev/ttyACM0 \ 
     --robot.id=den_follower_arm \
     --robot.cameras="{ front: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 30}}" \
     --teleop.type=so101_leader \
@@ -113,11 +112,11 @@ lerobot-record \
   --teleop.left_arm_port=/dev/ttyACM3 \
   --teleop.right_arm_port=/dev/ttyACM1 \
   --teleop.id=bimanual_leader \
-  --dataset.repo_id=Mozgi512/burger_3 \
-  --dataset.num_episodes=20 \
+  --dataset.repo_id=Mozgi512/burger_4 \
+  --dataset.num_episodes=30 \
   --dataset.single_task="Burger" \
   --dataset.episode_time_s=60 \
-  --dataset.reset_time_s=5 \
+  --dataset.reset_time_s=5
 
 (eval:)
 #working
@@ -127,12 +126,12 @@ lerobot-record  \
   --robot.left_arm_port=/dev/ttyACM2 \
   --robot.right_arm_port=/dev/ttyACM0 \
   --robot.id=bimanual_follower \
-  --policy.path=Mozgi512/act_burger_merged2_6000 \
+  --policy.path=Mozgi512/act_burger_final_8000 \
   --robot.cameras="{ top: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 30},front: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 30}}" \
   --display_data=false \
   --dataset.push_to_hub=false \
   --dataset.single_task="Burger" \
-  --dataset.episode_time_s=15 \
+  --dataset.episode_time_s=120 \
   --dataset.num_episodes=1 \
   --dataset.repo_id=Mozgi512/eval_hoge1
 
@@ -180,13 +179,13 @@ python3 return_homepos.py
 #apologize:
   lerobot-record \
     --robot.type=so101_follower \
-    --robot.port=/dev/ttyACM0 \
+    --robot.port=/dev/ttyACM2 \
     --robot.id=den_follower_arm \
     --teleop.type=so101_leader \
-    --teleop.port=/dev/ttyACM1 \
+    --teleop.port=/dev/ttyACM3 \
     --teleop.id=den_leader_arm \
     --display_data=true \
-    --dataset.repo_id=Mozgi512/record_apologizing_1 \
+    --dataset.repo_id=Mozgi512/record_apologizing_2 \
     --dataset.num_episodes=5 \
     --dataset.single_task="Apologizing" \
     --dataset.episode_time_s=5 \
@@ -194,7 +193,7 @@ python3 return_homepos.py
 
     lerobot-replay \
     --robot.type=so101_follower \
-    --robot.port=/dev/ttyACM0 \
+    --robot.port=/dev/ttyACM2 \
     --robot.id=den_follower_arm \
-    --dataset.repo_id=Mozgi512/record_apologizing_1 \
-    --dataset.episode=4
+    --dataset.repo_id=Mozgi512/record_apologizing_2 \
+    --dataset.episode=2
